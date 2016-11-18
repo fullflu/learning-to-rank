@@ -16,6 +16,7 @@ Although learning by Listwise cost based on Top-k probability has been proposed,
 
 ### Usage
 - File preparation
+
 Users need to prepare at least one csv file ("datasets_train.csv) in the following format:
 ```
 In [1]: import pandas as pd
@@ -43,8 +44,9 @@ If you want to test and evaluate the performance of the learnt model, "datasets_
 
 If you want to predict rankings of new datasets, whose true scores are unknown, "datasets_new.csv" is necessary. The format of this file is the same as "datasets_train.csv", except that "score" column is not included.
 
-- Calculation
+- Calculation after cloning
 ```
+cd learning-to-rank/blackbox
 python listnet_open.py -trf "datasets_train.csv" - tef "datasets_test.csv" -nf "datasets_new.csv"
 ```
 
