@@ -31,17 +31,17 @@ def ndcg(y_true, y_score, k=40):
 
 # Listnet class
 class ListNet(object):
-    def __init__(self, n_hidden1 = 200, n_hidden2 = 78, batch_size = 28, max_iter = 1000, n_thres_cand = 40, test_ratio = 0.5, verbose = 10):
+    def __init__(self, n_hidden1 = 200, n_hidden2 = 78, batch_size = 28, max_iter = 1000, n_thres_cand = 40, val_ratio = 0.5, verbose = 10):
         super(ListNet, self).__init__()
         self.batch_size = batch_size
         self.verbose = verbose
         self.max_iter = max_iter
-        self.test_ratio = test_ratio
+        self.val_ratio = val_ratio
         self.n_hidden1 = n_hidden1
         self.n_hidden2 = n_hidden2
         self.n_thres_cand = n_thres_cand
 
-    def prepare_data(self,filename=None,T=500, dim = 30, train = True, new_data = True):
+    def prepare_data(self,filename=None,T=500, dim = 30, train = True, noscore = True):
         if train:
             if filename:
                 data = pd.read_csv(filename)
@@ -61,7 +61,7 @@ class ListNet(object):
         else:
             if filename:
                 data = pd.read_csv(filename)
-                if new_data:
+                if noscore:
                     self.test_X = []
                     for t in data.session.unique():
                         dt = data[data.session == t]
@@ -82,8 +82,8 @@ class ListNet(object):
                     self.test_T = len(self.test_X)                
 
         perm_all = np.random.permutation(self.T)
-        self.train_indices = perm_all[int(self.test_ratio * self.T):]
-        self.test_indices = perm_all[:int(self.test_ratio * self.T)]
+        self.train_indices = perm_all[int(self.val_ratio * self.T):]
+        self.val_indices = perm_all[:int(self.val_ratio * self.T)]
         self.dim = xt.shape[1]
 
     def get_loss(self, x_t, y_t):
@@ -103,12 +103,13 @@ class ListNet(object):
         #logsumexp = F.reshape(xm,(xm.shape[0],)) + F.log(F.sum(F.exp(pred-xm_broadcast),axis=1))
         logsumexp = F.broadcast_to(logsumexp,(xm.shape[0],pred.shape[1]))
         loss = -1 * F.sum( p_true * (pred - logsumexp) )
-        trainres = ndcg(y_t.data,pred.data)#,nthres)
+        trainres = ndcg(y_t.data,pred.data,self.n_thres_cand)#,nthres)
         if np.isnan(trainres):
             print y_t.data.max(),y_t.data.min()
         return loss,trainres
 
-    def fit(self):
+    def fit(self,train_val_filename):
+        self.prepare_data(filename = train_val_filename)
         # model initialization
         self.model = net.MLPListNet(self.dim, self.n_hidden1, self.n_hidden2)
         self.optimizer = optimizers.Adam()
@@ -131,19 +132,20 @@ class ListNet(object):
                     trainres += trainres_t
                 loss.backward()
                 self.optimizer.update()
-            # start evaluation
+            # start validation
             if self.verbose:
-                if iter_ % self.verbose == 0:
+                if (iter_ + 1) % self.verbose == 0:
                     print("step:{},train_loss:{}".format(iter_,loss.data))
                     print("train_ndcg:{}".format(trainres/traincnt))
                     trainres = 0.0
                     traincnt = 0
-                    testres = self.validation()
-                    print("valid_ndcg:{}".format(testres/len(self.test_indices)))
+                    if len(self.val_indices) != 0:
+                        testres = self.validation()
+                        print("valid_ndcg:{}".format(testres/len(self.val_indices)))
 
     def validation(self):
         testres = 0.0
-        for j in self.test_indices:
+        for j in self.val_indices:
             sorted_idxes = np.argsort(self.Y[j])[::-1]
             nthres = min(self.n_thres_cand, sorted_idxes.shape[0])
             x_j = Variable(self.X[j][sorted_idxes[:nthres]])
@@ -153,7 +155,7 @@ class ListNet(object):
             y_j = F.normalize(y_j)
             pred_j = self.predict(x_j)
             pred_j = F.reshape(pred_j,(pred_j.data.shape[0],))
-            testres += ndcg(y_j.data,pred_j.data)
+            testres += ndcg(y_j.data,pred_j.data,self.n_thres_cand)
         return testres
 
     def predict(self,test_X):
@@ -166,19 +168,18 @@ class ListNet(object):
                 pred.append(pred_t)
             return pred
 
-    def test(self,filename,new_data = True):
+    def test(self,filename,noscore = True):
         testres = 0
-        self.prepare_data(filename = filename, train = False, new_data = new_data)
-        if new_data:
+        self.prepare_data(filename = filename, train = False, noscore = noscore)
+        if noscore:
             pred = pd.DataFrame()
             for j in range(self.test_T):
                 x_j = Variable(self.test_X[j])
                 pred_j = self.predict(x_j)
                 pred_j = F.reshape(pred_j,(pred_j.data.shape[0],))
-                pred = pd.concat([pred,pd.DataFrame(pred_j.data).T])
+                pred = pd.concat([pred,pd.DataFrame(np.sort(pred_j.data)[::-1]).T])
             pred.to_csv("new_results.csv",index=False)
             print("save new_results.csv !")
-
 
         else:
             for j in range(self.test_T):
@@ -191,40 +192,42 @@ class ListNet(object):
                 y_j = F.normalize(y_j)
                 pred_j = self.predict(x_j)
                 pred_j = F.reshape(pred_j,(pred_j.data.shape[0],))
-                testres += ndcg(y_j.data,pred_j.data)
+                testres += ndcg(y_j.data,pred_j.data,self.n_thres_cand)
             print("test_ndcg:{}".format(testres / self.test_T))
-
-
-
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description = 'This script is: lisenet_open.py')
-    parser.add_argument('--tr_filename', '-trf', type = str,
-                        help='tr_filename')
-    parser.add_argument('--te_filename', '-tef', type = str,
-                        help='te_filename')
-    parser.add_argument('--new_filename', '-nf', type = str,
-                        help='new_filename')
-    parser.add_argument('--verbose', '-v', default = 10, type=int,
+    parser.add_argument('--train_val_filename', '-trvf', type = str,
+                        help='train_val_filename')
+    parser.add_argument('--test_score_filename', '-tesf', type = str,
+                        help='test_score_filename')
+    parser.add_argument('--test_noscore_filename', '-tenf', type = str,
+                        help='test_noscore_filename')
+    parser.add_argument('--verbose', '-ve', default = 10, type=int,
                         help='the number of verbose step')
     parser.add_argument('--max_iter', '-mi', default = 1000, type=int,
                         help='the number of max_iteration')
+    parser.add_argument('--val_ratio', '-vr', default = .5, type=float,
+                        help='the ratio of validation')
+    parser.add_argument('--rank', '-r', default = 40, type=int,
+                        help='the number of rank used for evaluation')
 
     args = parser.parse_args()
-    tr_filename = args.tr_filename
-    te_filename = args.te_filename
-    new_filename = args.new_filename
+    train_val_filename = args.train_val_filename
+    test_score_filename = args.test_score_filename
+    test_noscore_filename = args.test_noscore_filename
     verbose = args.verbose
     max_iter = args.max_iter
+    val_ratio = args.val_ratio
+    rank = args.rank
 
-    agent = ListNet(verbose = verbose, max_iter = max_iter)
-    agent.prepare_data(filename = tr_filename)
-    agent.fit()
-    if te_filename:
-        agent.test(filename = te_filename, new_data = False)
-    if new_filename:
-        agent.test(filename = new_filename, new_data = True)
+    agent = ListNet(verbose = verbose, max_iter = max_iter, val_ratio = val_ratio, n_thres_cand = rank)
+    agent.fit(train_val_filename = train_val_filename)
+    if test_score_filename:
+        agent.test(filename = test_score_filename, noscore = False)
+    if test_noscore_filename:
+        agent.test(filename = test_noscore_filename, noscore = True)
 
 
 
