@@ -1,6 +1,8 @@
-# Learning to rank repository
+# Learning to Rank repository
 
-## Requirement
+A simple Python implementation of Learning to Rank.
+
+## Requirements
 - Python (2.7.6)
 - chainer  (1.16.0)
 - six (1.10.0)
@@ -56,11 +58,13 @@ If you want to predict rankings of new datasets, whose true scores are unknown, 
 ```
 git clone https://github.com/fullflu/learning-to-rank.git
 cd learning-to-rank/blackbox
-python listnet_open.py -trvf "datasets.csv" - tesf "datasets_test.csv" -tenf "datasets_test_noscore.csv" -vr 0.5
+python listnet.py -trvf "datasets.csv" - tesf "datasets_test.csv" -tenf "datasets_test_noscore.csv" -vr 0.5
 ```
 
 You can add other argments if you like.
-
-
+ 
 
 If you find bugs, I hope you could reports them.
+Other methods (both parametric and non-parametric) will be implemented.
+
+Nov, 2016
