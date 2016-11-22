@@ -58,7 +58,7 @@ If you want to predict rankings of new datasets, whose true scores are unknown, 
 ```
 git clone https://github.com/fullflu/learning-to-rank.git
 cd learning-to-rank/blackbox
-python listnet.py -trvf "datasets.csv" - tesf "datasets_test.csv" -tenf "datasets_test_noscore.csv" -vr 0.5
+python listnet.py -trvf "datasets.csv" -tesf "datasets_test.csv" -tenf "datasets_test_noscore.csv" -vr 0.5
 ```
 
 You can add other argments if you like.
